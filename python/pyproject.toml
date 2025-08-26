@@ -7,7 +7,6 @@ name = "py-fake-useragent"
 version = "0.0.3"
 description = "Генерация User-Agent и HTTP-заголовков на ядре Go"
 readme = "README.md"
-homepage = "https://github.com/imbecility/go-fake-useragent"
 requires-python = ">=3.10"
 license = "MIT"
 classifiers = [
@@ -22,3 +21,6 @@ packages = ["py_fake_useragent"]
 
 [tool.setuptools.package-data]
 py_fake_useragent = ["lib/useragent.*"]
+
+[project.urls]
+Homepage = "https://github.com/imbecility/go-fake-useragent"

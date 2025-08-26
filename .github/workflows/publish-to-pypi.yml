@@ -176,6 +176,9 @@ jobs:
 
       - name: установка версии в pyproject.toml python скриптом
         shell: python
+        env:
+          PYTHONUTF8: 1
+          PYTHONIOENCODING: 'UTF-8'
         run: |
           import re
           from pathlib import Path
@@ -200,6 +203,9 @@ jobs:
       - name: установка uv
         run: pip install uv
       - name: сборка под все версии Python
+        env:
+          PYTHONUTF8: 1
+          PYTHONIOENCODING: 'UTF-8'
         run: |
           mkdir -p ../dist
           PYTHON_VERSIONS="3.10 3.11 3.12 3.13 3.14"
