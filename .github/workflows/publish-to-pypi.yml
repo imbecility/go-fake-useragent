@@ -1,0 +1,240 @@
+# ./.github/workflows/publish-to-pypi.yml
+name: Build and publish Python distributions to PyPI
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+jobs:
+  prepare:
+    name: получение версии релиза
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+    steps:
+      - name: проверка репозитория
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: определение строки с версией
+        id: get_version
+        shell: bash
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${{ github.ref_name }}"
+            echo "активируется при отправке тега, используется версия из тега: $VERSION"
+          else
+            echo "запущено вручную, поиск последнего тега в git..."
+            VERSION=$(git describe --tags --abbrev=0)
+            echo "найден последний тег: $VERSION"
+          fi
+          CLEAN_VERSION=${VERSION#v}
+          echo "очищенная версия: $CLEAN_VERSION"
+          echo "version=$CLEAN_VERSION" >> "$GITHUB_OUTPUT"
+
+  build-wheels-manylinux:
+    name: сборка под manylinux
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: проверка репозитория
+        uses: actions/checkout@v5
+
+      - name: сборка в контейнере manylinux
+        env:
+          PACKAGE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          docker run --rm \
+            -v "$(pwd)":/workdir \
+            -e PACKAGE_VERSION \
+            quay.io/pypa/manylinux2014_x86_64 /bin/bash -c '
+              set -eux
+              
+              echo "--- установка версии в pyproject.toml на $PACKAGE_VERSION ---"
+              sed -i "s/^version = .*/version = \"$PACKAGE_VERSION\"/" /workdir/python/pyproject.toml
+              
+              echo "--- установка Go и инструментов сборки ---"
+              yum install -y curl
+              curl -sL https://go.dev/dl/go1.25.0.linux-amd64.tar.gz | tar -C /usr/local -xzf -
+              export PATH=$PATH:/usr/local/go/bin
+              
+              echo "--- установка uv ---"
+              /opt/python/cp312-cp312/bin/pip install uv
+              
+              mkdir -p /workdir/dist
+              
+              for PY_BIN in /opt/python/cp3{10,11,12}*/bin; do
+                if [[ ! -d "$PY_BIN" ]]; then continue; fi
+                echo "--- сборка для $($PY_BIN/python --version) ---"
+                CGO_ENABLED=1 TARGET_ARCH="x86_64" \
+                /opt/python/cp312-cp312/bin/uv build \
+                  --wheel \
+                  --python "$PY_BIN/python" \
+                  --out-dir /workdir/dist \
+                  --package py-fake-useragent \
+                  /workdir/python
+              done
+
+              echo "--- исправление билдов ---"
+              for whl in /workdir/dist/*-linux_x86_64.whl; do
+                auditwheel repair "$whl" --plat manylinux2014_x86_64 -w /workdir/dist/
+                rm "$whl"
+              done
+
+              echo "--- готовые билды в dist/ ---"
+              ls -l /workdir/dist/
+            '
+      
+      - name: сохрание пакетов
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package-wheel-manylinux
+          path: dist/*.whl
+
+  build-wheels-musllinux:
+    name: сборка под musllinux
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: проверка репозитория
+        uses: actions/checkout@v5
+
+      - name: сборка в контейнере musllinux
+        env:
+          PACKAGE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          docker run --rm \
+            -v "$(pwd)":/workdir \
+            -e PACKAGE_VERSION \
+            quay.io/pypa/musllinux_1_1_x86_64 /bin/bash -c '
+              set -eux
+              
+              echo "--- установка версии в pyproject.toml на $PACKAGE_VERSION ---"
+              sed -i "s/^version = .*/version = \"$PACKAGE_VERSION\"/" /workdir/python/pyproject.toml
+              
+              echo "--- установка Go и инструментов сборки ---"
+              apk add --no-cache curl build-base
+              curl -sL https://go.dev/dl/go1.25.0.linux-amd64.tar.gz | tar -C /usr/local -xzf -
+              export PATH=$PATH:/usr/local/go/bin
+              
+              echo "--- установка uv ---"
+              /opt/python/cp312-cp312/bin/pip install uv
+              
+              mkdir -p /workdir/dist
+              
+              for PY_BIN in /opt/python/cp3{10,11,12}*/bin; do
+                if [[ ! -d "$PY_BIN" ]]; then continue; fi
+                echo "--- сборка для $($PY_BIN/python --version) ---"
+                CGO_ENABLED=1 TARGET_ARCH="x86_64" \
+                /opt/python/cp312-cp312/bin/uv build \
+                  --wheel \
+                  --python "$PY_BIN/python" \
+                  --out-dir /workdir/dist \
+                  --package py-fake-useragent \
+                  /workdir/python
+              done
+
+              echo "--- исправление билдов ---"
+              for whl in /workdir/dist/*-linux_x86_64.whl; do
+                auditwheel repair "$whl" --plat musllinux_1_1_x86_64 -w /workdir/dist/
+                rm "$whl"
+              done
+
+              echo "--- готовые билды в dist/ ---"
+              ls -l /workdir/dist/
+            '
+      
+      - name: сохранение пакетов
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package-wheel-musllinux
+          path: dist/*.whl
+
+  build-wheels-other:
+    name: сборка под ${{ matrix.platform.plat }}
+    needs: prepare
+    runs-on: ${{ matrix.platform.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - os: windows-latest
+            plat: win_amd64
+            arch: amd64
+          - os: macos-13
+            plat: macosx_x86_64
+            arch: x86_64
+          - os: macos-14
+            plat: macosx_arm64
+            arch: arm64
+    steps:
+      - name: проверка репозитория
+        uses: actions/checkout@v5
+
+      - name: установка версии в pyproject.toml python скриптом
+        shell: python
+        run: |
+          import re
+          from pathlib import Path
+
+          version = "${{ needs.prepare.outputs.version }}"
+          pyproject_path = Path("python/pyproject.toml")
+          content = pyproject_path.read_text(encoding="utf-8")
+          new_content = re.sub(
+              r'^version\s*=\s*".*"',
+              f'version = "{version}"',
+              content,
+              count=1,
+              flags=re.MULTILINE
+          )
+          pyproject_path.write_text(new_content, encoding="utf-8")
+          print(f"версия в pyproject.toml установлена на {version}")
+
+      - name: установка Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: установка uv
+        run: pip install uv
+      - name: сборка под все версии Python
+        run: |
+          mkdir -p ../dist
+          PYTHON_VERSIONS="3.10 3.11 3.12 3.13 3.14"
+          ARCH="${{ matrix.platform.arch }}"
+          for PY_VER in $PYTHON_VERSIONS; do
+            echo "--- сборка Python $PY_VER под $ARCH ---"
+            CGO_ENABLED=1 TARGET_ARCH="$ARCH" uv build --wheel --python "$PY_VER" --out-dir ../dist --package py-fake-useragent
+          done
+          echo "--- готовые билды в dist/ ---"
+          ls -l ../dist/
+        working-directory: ./python
+        shell: bash
+      - name: сохранение пакетов
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package-wheel-${{ matrix.platform.plat }}
+          path: dist/*.whl
+
+  publish-to-pypi:
+    name: выгрузка и опубликование пакетов на PyPI
+    needs: [prepare, build-wheels-manylinux, build-wheels-musllinux, build-wheels-other]
+    runs-on: ubuntu-latest
+    # публикация произойдет ТОЛЬКО при push тега, а не при ручном запуске.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
+    steps:
+      - name: скачивание всех сборок пакетов
+        uses: actions/download-artifact@v5
+        with:
+          pattern: python-package-wheel-*
+          path: dist
+          merge-multiple: true
+      - name: список сборок
+        run: ls -R dist
+      - name: публикация на PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}

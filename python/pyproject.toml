@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=80.9.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "py-fake-useragent"
+version = "0.0.3"
+description = "Генерация User-Agent и HTTP-заголовков на ядре Go"
+readme = "README.md"
+homepage = "https://github.com/imbecility/go-fake-useragent"
+requires-python = ">=3.10"
+license = "MIT"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Go",
+    "Operating System :: OS Independent",
+]
+
+[tool.setuptools]
+include-package-data = true
+packages = ["py_fake_useragent"]
+
+[tool.setuptools.package-data]
+py_fake_useragent = ["lib/useragent.*"]
