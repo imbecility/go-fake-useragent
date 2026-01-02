@@ -53,7 +53,7 @@ jobs:
             quay.io/pypa/manylinux2014_x86_64 /bin/bash -c '
               set -eux
               
-              echo "--- установка версии в pyproject.toml на $PACKAGE_VERSION ---"
+              echo "--- установка версии ---"
               sed -i "s/^version = .*/version = \"$PACKAGE_VERSION\"/" /workdir/python/pyproject.toml
               
               echo "--- установка Go ---"
@@ -62,12 +62,11 @@ jobs:
               export PATH=$PATH:/usr/local/go/bin
               
               echo "--- установка uv ---"
-              # Используем cp310 как "хост" для сборки uv
               /opt/python/cp310-cp310/bin/pip install uv
               
               mkdir -p /workdir/dist
               
-              echo "--- сборка wheel (с тегом cp310-cp310) ---"
+              echo "--- сборка сырого wheel ---"
               CGO_ENABLED=1 TARGET_ARCH="x86_64" \
               /opt/python/cp310-cp310/bin/uv build \
                 --wheel \
@@ -76,33 +75,32 @@ jobs:
                 --package py-fake-useragent \
                 /workdir/python
 
-              echo "--- исправление билдов с auditwheel ---"
-              # auditwheel возьмет cp310-cp310 wheel, отремонтирует, заменит platform tag
-              # и удалит исходный файл. Результат будет в /workdir/dist, все еще с cp310-cp310.
               cd /workdir/dist
-              # Находим wheel, который uv только что собрал
+              # Находим исходный wheel
               ORIG_WHL=$(ls py_fake_useragent-*-cp310-cp310-linux_x86_64.whl 2>/dev/null | head -n 1)
-
-              if [ -z "$ORIG_WHL" ]; then
-                echo "Ошибка: Исходный wheel-файл с тегом cp310-cp310-linux_x86_64.whl не найден."
-                exit 1
-              fi
               
+              if [ -z "$ORIG_WHL" ]; then
+                 echo "Ошибка: Исходный wheel не найден!"
+                 exit 1
+              fi
+
+              echo "--- repair через auditwheel ---"
               auditwheel repair "$ORIG_WHL" --plat manylinux2014_x86_64 -w /workdir/dist/
               
+              echo "--- УДАЛЕНИЕ СЫРОГО ФАЙЛА ---"
+              rm "$ORIG_WHL"
+
               echo "--- переименование в ABI-agnostic (py3-none) ---"
-              # Теперь переименовываем Python-тег в отремонтированном wheel-файле
+              # Ищем только manylinux файлы
               for whl_file in py_fake_useragent-*-cp310-cp310-manylinux*.whl; do
                 if [ -f "$whl_file" ]; then
-                  NEW_NAME=$(echo "$whl_file" | sed 's/-cp310-cp310-/-py3-none-/g')
+                  NEW_NAME=$(echo "$whl_file" | sed "s/-cp310-cp310-/-py3-none-/g")
                   mv "$whl_file" "$NEW_NAME"
-                  echo "Переименован: $whl_file -> $NEW_NAME"
-                else
-                  echo "Предупреждение: Wheel-файл $whl_file не найден для переименования."
+                  echo "Готов: $NEW_NAME"
                 fi
               done
 
-              echo "--- готовые билды в dist/ ---"
+              echo "--- Итоговое содержимое dist (должны быть только py3-none) ---"
               ls -l /workdir/dist/
             '
       
@@ -118,7 +116,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: проверка репозитория
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: сборка в контейнере musllinux
         env:
@@ -130,7 +128,7 @@ jobs:
             quay.io/pypa/musllinux_1_1_x86_64 /bin/bash -c '
               set -eux
               
-              echo "--- установка версии в pyproject.toml ---"
+              echo "--- установка версии ---"
               sed -i "s/^version = .*/version = \"$PACKAGE_VERSION\"/" /workdir/python/pyproject.toml
               
               echo "--- установка Go ---"
@@ -143,7 +141,7 @@ jobs:
               
               mkdir -p /workdir/dist
               
-              echo "--- сборка wheel (с тегом cp310-cp310) ---"
+              echo "--- сборка сырого wheel ---"
               CGO_ENABLED=1 TARGET_ARCH="x86_64" \
               /opt/python/cp310-cp310/bin/uv build \
                 --wheel \
@@ -152,29 +150,30 @@ jobs:
                 --package py-fake-useragent \
                 /workdir/python
 
-              echo "--- исправление билдов с auditwheel ---"
               cd /workdir/dist
               ORIG_WHL=$(ls py_fake_useragent-*-cp310-cp310-linux_x86_64.whl 2>/dev/null | head -n 1)
 
               if [ -z "$ORIG_WHL" ]; then
-                echo "Ошибка: Исходный wheel-файл с тегом cp310-cp310-linux_x86_64.whl не найден."
-                exit 1
+                 echo "Ошибка: Исходный wheel не найден!"
+                 exit 1
               fi
 
+              echo "--- repair через auditwheel ---"
               auditwheel repair "$ORIG_WHL" --plat musllinux_1_1_x86_64 -w /workdir/dist/
               
+              echo "--- УДАЛЕНИЕ СЫРОГО ФАЙЛА ---"
+              rm "$ORIG_WHL"
+
               echo "--- переименование в ABI-agnostic (py3-none) ---"
               for whl_file in py_fake_useragent-*-cp310-cp310-musllinux*.whl; do
                 if [ -f "$whl_file" ]; then
-                  NEW_NAME=$(echo "$whl_file" | sed 's/-cp310-cp310-/-py3-none-/g')
+                  NEW_NAME=$(echo "$whl_file" | sed "s/-cp310-cp310-/-py3-none-/g")
                   mv "$whl_file" "$NEW_NAME"
-                  echo "Переименован: $whl_file -> $NEW_NAME"
-                else
-                  echo "Предупреждение: Wheel-файл $whl_file не найден для переименования."
+                  echo "Готов: $NEW_NAME"
                 fi
               done
 
-              echo "--- готовые билды в dist/ ---"
+              echo "--- Итоговое содержимое dist (должны быть только py3-none) ---"
               ls -l /workdir/dist/
             '
       
