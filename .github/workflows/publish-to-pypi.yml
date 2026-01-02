@@ -1,3 +1,4 @@
+# ./.github/workflows/publish-to-pypi.yml
 name: Build and publish Python distributions to PyPI
 
 on:
@@ -61,14 +62,12 @@ jobs:
               export PATH=$PATH:/usr/local/go/bin
               
               echo "--- установка uv ---"
-              # Используем любой доступный питон, например 3.10, для запуска сборки
+              # Используем cp310 как "хост" для сборки uv
               /opt/python/cp310-cp310/bin/pip install uv
               
               mkdir -p /workdir/dist
               
-              echo "--- сборка (единая для всех версий Python) ---"
-              # Собираем один раз.
-              # Используем cp310 просто как "хост" для запуска uv.
+              echo "--- сборка wheel (с тегом cp310-cp310) ---"
               CGO_ENABLED=1 TARGET_ARCH="x86_64" \
               /opt/python/cp310-cp310/bin/uv build \
                 --wheel \
@@ -77,20 +76,30 @@ jobs:
                 --package py-fake-useragent \
                 /workdir/python
 
-              echo "--- переименование в ABI-agnostic (py3-none) ---"
-              # uv создает файл вида *-cp310-cp310-linux_x86_64.whl
-              # Нам нужно превратить его в *-py3-none-linux_x86_64.whl ПЕРЕД auditwheel
+              echo "--- исправление билдов с auditwheel ---"
+              # auditwheel возьмет cp310-cp310 wheel, отремонтирует, заменит platform tag
+              # и удалит исходный файл. Результат будет в /workdir/dist, все еще с cp310-cp310.
               cd /workdir/dist
-              for f in *-linux_x86_64.whl; do
-                # Заменяем cp310-cp310 на py3-none
-                mv "$f" "${f//cp310-cp310/py3-none}"
-              done
+              # Находим wheel, который uv только что собрал
+              ORIG_WHL=$(ls py_fake_useragent-*-cp310-cp310-linux_x86_64.whl 2>/dev/null | head -n 1)
 
-              echo "--- исправление билдов (auditwheel) ---"
-              # auditwheel возьмет py3-none файл и создаст py3-none-manylinux файл
-              for whl in *-linux_x86_64.whl; do
-                auditwheel repair "$whl" --plat manylinux2014_x86_64 -w /workdir/dist/
-                rm "$whl"
+              if [ -z "$ORIG_WHL" ]; then
+                echo "Ошибка: Исходный wheel-файл с тегом cp310-cp310-linux_x86_64.whl не найден."
+                exit 1
+              fi
+              
+              auditwheel repair "$ORIG_WHL" --plat manylinux2014_x86_64 -w /workdir/dist/
+              
+              echo "--- переименование в ABI-agnostic (py3-none) ---"
+              # Теперь переименовываем Python-тег в отремонтированном wheel-файле
+              for whl_file in py_fake_useragent-*-cp310-cp310-manylinux*.whl; do
+                if [ -f "$whl_file" ]; then
+                  NEW_NAME=$(echo "$whl_file" | sed 's/-cp310-cp310-/-py3-none-/g')
+                  mv "$whl_file" "$NEW_NAME"
+                  echo "Переименован: $whl_file -> $NEW_NAME"
+                else
+                  echo "Предупреждение: Wheel-файл $whl_file не найден для переименования."
+                fi
               done
 
               echo "--- готовые билды в dist/ ---"
@@ -134,7 +143,7 @@ jobs:
               
               mkdir -p /workdir/dist
               
-              echo "--- сборка (единая) ---"
+              echo "--- сборка wheel (с тегом cp310-cp310) ---"
               CGO_ENABLED=1 TARGET_ARCH="x86_64" \
               /opt/python/cp310-cp310/bin/uv build \
                 --wheel \
@@ -143,16 +152,26 @@ jobs:
                 --package py-fake-useragent \
                 /workdir/python
 
-              echo "--- переименование в ABI-agnostic (py3-none) ---"
+              echo "--- исправление билдов с auditwheel ---"
               cd /workdir/dist
-              for f in *-linux_x86_64.whl; do
-                mv "$f" "${f//cp310-cp310/py3-none}"
-              done
+              ORIG_WHL=$(ls py_fake_useragent-*-cp310-cp310-linux_x86_64.whl 2>/dev/null | head -n 1)
 
-              echo "--- исправление билдов ---"
-              for whl in *-linux_x86_64.whl; do
-                auditwheel repair "$whl" --plat musllinux_1_1_x86_64 -w /workdir/dist/
-                rm "$whl"
+              if [ -z "$ORIG_WHL" ]; then
+                echo "Ошибка: Исходный wheel-файл с тегом cp310-cp310-linux_x86_64.whl не найден."
+                exit 1
+              fi
+
+              auditwheel repair "$ORIG_WHL" --plat musllinux_1_1_x86_64 -w /workdir/dist/
+              
+              echo "--- переименование в ABI-agnostic (py3-none) ---"
+              for whl_file in py_fake_useragent-*-cp310-cp310-musllinux*.whl; do
+                if [ -f "$whl_file" ]; then
+                  NEW_NAME=$(echo "$whl_file" | sed 's/-cp310-cp310-/-py3-none-/g')
+                  mv "$whl_file" "$NEW_NAME"
+                  echo "Переименован: $whl_file -> $NEW_NAME"
+                else
+                  echo "Предупреждение: Wheel-файл $whl_file не найден для переименования."
+                fi
               done
 
               echo "--- готовые билды в dist/ ---"
@@ -176,7 +195,7 @@ jobs:
           - os: windows-latest
             plat: win_amd64
             arch: amd64
-          - os: macos-14
+          - os: macos-13
             plat: macosx_x86_64
             arch: x86_64
           - os: macos-14
@@ -208,7 +227,7 @@ jobs:
       - name: установка uv
         run: pip install uv
         
-      - name: сборка (единая)
+      - name: сборка wheel (с конкретным тегом Python)
         env:
           PYTHONUTF8: 1
           PYTHONIOENCODING: 'UTF-8'
@@ -218,23 +237,25 @@ jobs:
           mkdir -p ../dist
           ARCH="${{ matrix.platform.arch }}"
           
-          # Берем текущий python из PATH (какой там стоит в runner, обычно 3.10+)
-          CURRENT_PY=$(python -c "import sys; print(f'cp{sys.version_info.major}{sys.version_info.minor}')")
-          echo "Используем Python тег: $CURRENT_PY для базовой сборки"
-          
           echo "--- сборка под $ARCH ---"
+          # uv будет использовать текущую версию Python ранера (напр. cp310-cp310)
           CGO_ENABLED=1 TARGET_ARCH="$ARCH" uv build --wheel --out-dir ../dist --package py-fake-useragent
 
           echo "--- переименование в ABI-agnostic (py3-none) ---"
           cd ../dist
           ls -l
           
-          # Проходимся по всем whl и меняем cp3XX-cp3XX (или abi3) на py3-none
-          for f in *.whl; do
-            # Универсальная замена любого cp3*-cp3* или cp3*-abi3* на py3-none
-            # Т.к. bash replacement сложен с regex, используем python для переименования
-             python -c "import os, sys, re; name = sys.argv[1]; new_name = re.sub(r'-(cp3\d+|py3)-(cp3\d+|abi3|none)-', '-py3-none-', name); print(f'Renaming {name} -> {new_name}'); os.rename(name, new_name) if name != new_name else None" "$f"
-          done
+          # Переименовываем wheel-файл, чтобы заменить python-tag на py3-none
+          python -c "import os, sys, re; \
+            for name in os.listdir('.'): \
+                if name.endswith('.whl'): \
+                    # Это regex заменяет любую комбинацию -cpXXX-cpXXX-, -cpXXX-abi3- или -cpXXX-none- на -py3-none- \
+                    new_name = re.sub(r'-(cp\d+|py\d+)-(cp\d+|abi3|none)-', '-py3-none-', name); \
+                    if name != new_name: \
+                        print(f'Переименовывается: {name} -> {new_name}'); \
+                        os.rename(name, new_name); \
+                    else: \
+                        print(f'Переименование не требуется для: {name}');"
           
           echo "--- итоговые файлы ---"
           ls -l
