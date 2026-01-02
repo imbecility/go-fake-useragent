@@ -1,4 +1,3 @@
-# ./.github/workflows/publish-to-pypi.yml
 name: Build and publish Python distributions to PyPI
 
 on:
@@ -56,30 +55,40 @@ jobs:
               echo "--- установка версии в pyproject.toml на $PACKAGE_VERSION ---"
               sed -i "s/^version = .*/version = \"$PACKAGE_VERSION\"/" /workdir/python/pyproject.toml
               
-              echo "--- установка Go и инструментов сборки ---"
+              echo "--- установка Go ---"
               yum install -y curl
               curl -sL https://go.dev/dl/go1.25.0.linux-amd64.tar.gz | tar -C /usr/local -xzf -
               export PATH=$PATH:/usr/local/go/bin
               
               echo "--- установка uv ---"
-              /opt/python/cp312-cp312/bin/pip install uv
+              # Используем любой доступный питон, например 3.10, для запуска сборки
+              /opt/python/cp310-cp310/bin/pip install uv
               
               mkdir -p /workdir/dist
               
-              for PY_BIN in /opt/python/cp3{10,11,12}*/bin; do
-                if [[ ! -d "$PY_BIN" ]]; then continue; fi
-                echo "--- сборка для $($PY_BIN/python --version) ---"
-                CGO_ENABLED=1 TARGET_ARCH="x86_64" \
-                /opt/python/cp312-cp312/bin/uv build \
-                  --wheel \
-                  --python "$PY_BIN/python" \
-                  --out-dir /workdir/dist \
-                  --package py-fake-useragent \
-                  /workdir/python
+              echo "--- сборка (единая для всех версий Python) ---"
+              # Собираем один раз.
+              # Используем cp310 просто как "хост" для запуска uv.
+              CGO_ENABLED=1 TARGET_ARCH="x86_64" \
+              /opt/python/cp310-cp310/bin/uv build \
+                --wheel \
+                --python "/opt/python/cp310-cp310/bin/python" \
+                --out-dir /workdir/dist \
+                --package py-fake-useragent \
+                /workdir/python
+
+              echo "--- переименование в ABI-agnostic (py3-none) ---"
+              # uv создает файл вида *-cp310-cp310-linux_x86_64.whl
+              # Нам нужно превратить его в *-py3-none-linux_x86_64.whl ПЕРЕД auditwheel
+              cd /workdir/dist
+              for f in *-linux_x86_64.whl; do
+                # Заменяем cp310-cp310 на py3-none
+                mv "$f" "${f//cp310-cp310/py3-none}"
               done
 
-              echo "--- исправление билдов ---"
-              for whl in /workdir/dist/*-linux_x86_64.whl; do
+              echo "--- исправление билдов (auditwheel) ---"
+              # auditwheel возьмет py3-none файл и создаст py3-none-manylinux файл
+              for whl in *-linux_x86_64.whl; do
                 auditwheel repair "$whl" --plat manylinux2014_x86_64 -w /workdir/dist/
                 rm "$whl"
               done
@@ -100,7 +109,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: проверка репозитория
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: сборка в контейнере musllinux
         env:
@@ -112,33 +121,36 @@ jobs:
             quay.io/pypa/musllinux_1_1_x86_64 /bin/bash -c '
               set -eux
               
-              echo "--- установка версии в pyproject.toml на $PACKAGE_VERSION ---"
+              echo "--- установка версии в pyproject.toml ---"
               sed -i "s/^version = .*/version = \"$PACKAGE_VERSION\"/" /workdir/python/pyproject.toml
               
-              echo "--- установка Go и инструментов сборки ---"
+              echo "--- установка Go ---"
               apk add --no-cache curl build-base
               curl -sL https://go.dev/dl/go1.25.0.linux-amd64.tar.gz | tar -C /usr/local -xzf -
               export PATH=$PATH:/usr/local/go/bin
               
               echo "--- установка uv ---"
-              /opt/python/cp312-cp312/bin/pip install uv
+              /opt/python/cp310-cp310/bin/pip install uv
               
               mkdir -p /workdir/dist
               
-              for PY_BIN in /opt/python/cp3{10,11,12}*/bin; do
-                if [[ ! -d "$PY_BIN" ]]; then continue; fi
-                echo "--- сборка для $($PY_BIN/python --version) ---"
-                CGO_ENABLED=1 TARGET_ARCH="x86_64" \
-                /opt/python/cp312-cp312/bin/uv build \
-                  --wheel \
-                  --python "$PY_BIN/python" \
-                  --out-dir /workdir/dist \
-                  --package py-fake-useragent \
-                  /workdir/python
+              echo "--- сборка (единая) ---"
+              CGO_ENABLED=1 TARGET_ARCH="x86_64" \
+              /opt/python/cp310-cp310/bin/uv build \
+                --wheel \
+                --python "/opt/python/cp310-cp310/bin/python" \
+                --out-dir /workdir/dist \
+                --package py-fake-useragent \
+                /workdir/python
+
+              echo "--- переименование в ABI-agnostic (py3-none) ---"
+              cd /workdir/dist
+              for f in *-linux_x86_64.whl; do
+                mv "$f" "${f//cp310-cp310/py3-none}"
               done
 
               echo "--- исправление билдов ---"
-              for whl in /workdir/dist/*-linux_x86_64.whl; do
+              for whl in *-linux_x86_64.whl; do
                 auditwheel repair "$whl" --plat musllinux_1_1_x86_64 -w /workdir/dist/
                 rm "$whl"
               done
@@ -172,9 +184,9 @@ jobs:
             arch: arm64
     steps:
       - name: проверка репозитория
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
-      - name: установка версии в pyproject.toml python скриптом
+      - name: установка версии в pyproject.toml
         shell: python
         env:
           PYTHONUTF8: 1
@@ -182,42 +194,51 @@ jobs:
         run: |
           import re
           from pathlib import Path
-
           version = "${{ needs.prepare.outputs.version }}"
           pyproject_path = Path("python/pyproject.toml")
           content = pyproject_path.read_text(encoding="utf-8")
-          new_content = re.sub(
-              r'^version\s*=\s*".*"',
-              f'version = "{version}"',
-              content,
-              count=1,
-              flags=re.MULTILINE
-          )
+          new_content = re.sub(r'^version\s*=\s*".*"', f'version = "{version}"', content, count=1, flags=re.MULTILINE)
           pyproject_path.write_text(new_content, encoding="utf-8")
-          print(f"версия в pyproject.toml установлена на {version}")
 
       - name: установка Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.25'
+          
       - name: установка uv
         run: pip install uv
-      - name: сборка под все версии Python
+        
+      - name: сборка (единая)
         env:
           PYTHONUTF8: 1
           PYTHONIOENCODING: 'UTF-8'
-        run: |
-          mkdir -p ../dist
-          PYTHON_VERSIONS="3.10 3.11 3.12 3.13 3.14"
-          ARCH="${{ matrix.platform.arch }}"
-          for PY_VER in $PYTHON_VERSIONS; do
-            echo "--- сборка Python $PY_VER под $ARCH ---"
-            CGO_ENABLED=1 TARGET_ARCH="$ARCH" uv build --wheel --python "$PY_VER" --out-dir ../dist --package py-fake-useragent
-          done
-          echo "--- готовые билды в dist/ ---"
-          ls -l ../dist/
         working-directory: ./python
         shell: bash
+        run: |
+          mkdir -p ../dist
+          ARCH="${{ matrix.platform.arch }}"
+          
+          # Берем текущий python из PATH (какой там стоит в runner, обычно 3.10+)
+          CURRENT_PY=$(python -c "import sys; print(f'cp{sys.version_info.major}{sys.version_info.minor}')")
+          echo "Используем Python тег: $CURRENT_PY для базовой сборки"
+          
+          echo "--- сборка под $ARCH ---"
+          CGO_ENABLED=1 TARGET_ARCH="$ARCH" uv build --wheel --out-dir ../dist --package py-fake-useragent
+
+          echo "--- переименование в ABI-agnostic (py3-none) ---"
+          cd ../dist
+          ls -l
+          
+          # Проходимся по всем whl и меняем cp3XX-cp3XX (или abi3) на py3-none
+          for f in *.whl; do
+            # Универсальная замена любого cp3*-cp3* или cp3*-abi3* на py3-none
+            # Т.к. bash replacement сложен с regex, используем python для переименования
+             python -c "import os, sys, re; name = sys.argv[1]; new_name = re.sub(r'-(cp3\d+|py3)-(cp3\d+|abi3|none)-', '-py3-none-', name); print(f'Renaming {name} -> {new_name}'); os.rename(name, new_name) if name != new_name else None" "$f"
+          done
+          
+          echo "--- итоговые файлы ---"
+          ls -l
+
       - name: сохранение пакетов
         uses: actions/upload-artifact@v4
         with:
@@ -228,11 +249,10 @@ jobs:
     name: выгрузка и опубликование пакетов на PyPI
     needs: [prepare, build-wheels-manylinux, build-wheels-musllinux, build-wheels-other]
     runs-on: ubuntu-latest
-    # публикация произойдет ТОЛЬКО при push тега, а не при ручном запуске.
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
     steps:
       - name: скачивание всех сборок пакетов
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v4
         with:
           pattern: python-package-wheel-*
           path: dist
