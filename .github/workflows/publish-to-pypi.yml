@@ -249,7 +249,7 @@ jobs:
     name: выгрузка и опубликование пакетов на PyPI
     needs: [prepare, build-wheels-manylinux, build-wheels-musllinux, build-wheels-other]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
+    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags')) || github.event_name == 'workflow_dispatch'
     steps:
       - name: скачивание всех сборок пакетов
         uses: actions/download-artifact@v4
