@@ -195,7 +195,7 @@ jobs:
           - os: windows-latest
             plat: win_amd64
             arch: amd64
-          - os: macos-14
+          - os: macos-13
             plat: macosx_x86_64
             arch: x86_64
           - os: macos-14
@@ -203,7 +203,7 @@ jobs:
             arch: arm64
     steps:
       - name: проверка репозитория
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: установка версии в pyproject.toml
         shell: python
@@ -238,24 +238,39 @@ jobs:
           ARCH="${{ matrix.platform.arch }}"
           
           echo "--- сборка под $ARCH ---"
-          # uv будет использовать текущую версию Python ранера (напр. cp310-cp310)
+          # uv соберет wheel с версией python текущего раннера (например, cp312)
           CGO_ENABLED=1 TARGET_ARCH="$ARCH" uv build --wheel --out-dir ../dist --package py-fake-useragent
 
           echo "--- переименование в ABI-agnostic (py3-none) ---"
           cd ../dist
           ls -l
           
-          # Переименовываем wheel-файл, чтобы заменить python-tag на py3-none
-          python -c "import os, sys, re; \
-            for name in os.listdir('.'): \
-                if name.endswith('.whl'): \
-                    # Это regex заменяет любую комбинацию -cpXXX-cpXXX-, -cpXXX-abi3- или -cpXXX-none- на -py3-none- \
-                    new_name = re.sub(r'-(cp\d+|py\d+)-(cp\d+|abi3|none)-', '-py3-none-', name); \
-                    if name != new_name: \
-                        print(f'Переименовывается: {name} -> {new_name}'); \
-                        os.rename(name, new_name); \
-                    else: \
-                        print(f'Переименование не требуется для: {name}');"
+          # Передаем Python-скрипт через pipe, чтобы избежать проблем с синтаксисом в одну строку
+          cat <<EOF | python
+          import os
+          import re
+          import sys
+
+          # Регулярка ищет теги типа -cp312-cp312- или -cp312-abi3- и меняет на -py3-none-
+          pattern = re.compile(r'-(cp\d+|py\d+)-(cp\d+|abi3|none)-')
+          replacement = '-py3-none-'
+
+          print("Запуск переименования...")
+          for name in os.listdir('.'):
+              if not name.endswith('.whl'):
+                  continue
+              
+              new_name = pattern.sub(replacement, name)
+              if new_name != name:
+                  print(f'Переименовывается: {name} -> {new_name}')
+                  try:
+                      os.rename(name, new_name)
+                  except OSError as e:
+                      print(f"Ошибка при переименовании: {e}")
+                      sys.exit(1)
+              else:
+                  print(f'Пропуск (имя корректное): {name}')
+          EOF
           
           echo "--- итоговые файлы ---"
           ls -l
