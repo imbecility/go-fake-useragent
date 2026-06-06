@@ -42,7 +42,7 @@ jobs:
       - name: проверка репозитория
         uses: actions/checkout@v6
 
-      - name: сборка в контейнере manylinux
+      - name: сборка в контейнере manylinux
         env:
           PACKAGE_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
@@ -51,20 +51,20 @@ jobs:
             -e PACKAGE_VERSION \
             quay.io/pypa/manylinux2014_x86_64 /bin/bash -c '
               set -eux
-          
+
               echo "--- установка версии ---"
               sed -i "s/^version = .*/version = \"$PACKAGE_VERSION\"/" /workdir/python/pyproject.toml
-          
+
               echo "--- установка Go ---"
               yum install -y curl
-              curl -sL https://go.dev/dl/go1.25.0.linux-amd64.tar.gz | tar -C /usr/local -xzf -
+              curl -sL https://go.dev/dl/go1.26.4.linux-amd64.tar.gz | tar -C /usr/local -xzf -
               export PATH=$PATH:/usr/local/go/bin
-          
-              echo "--- установка uv ---"
-              /opt/python/cp310-cp310/bin/pip install uv
-          
+
+              echo "--- установка uv и wheel ---"
+              /opt/python/cp310-cp310/bin/pip install uv wheel
+
               mkdir -p /workdir/dist
-          
+
               echo "--- сборка сырого wheel ---"
               CGO_ENABLED=1 TARGET_ARCH="x86_64" \
               /opt/python/cp310-cp310/bin/uv build \
@@ -75,35 +75,40 @@ jobs:
                 /workdir/python
 
               cd /workdir/dist
-              # Находим исходный wheel
               ORIG_WHL=$(ls py_fake_useragent-*-cp310-cp310-linux_x86_64.whl 2>/dev/null | head -n 1)
-          
+
               if [ -z "$ORIG_WHL" ]; then
-                 echo "Ошибка: Исходный wheel не найден!"
-                 exit 1
+                echo "Ошибка: Исходный wheel не найден!"
+                exit 1
               fi
 
               echo "--- repair через auditwheel ---"
               auditwheel repair "$ORIG_WHL" --plat manylinux2014_x86_64 -w /workdir/dist/
-          
-              echo "--- УДАЛЕНИЕ СЫРОГО ФАЙЛА ---"
+
+              echo "--- удаление сырого файла ---"
               rm "$ORIG_WHL"
 
-              echo "--- переименование в ABI-agnostic (py3-none) ---"
-              # Ищем только manylinux файлы
+              echo "--- перепаковка через wheel tags ---"
+              mkdir -p /workdir/dist/tmp_tagged
               for whl_file in py_fake_useragent-*-cp310-cp310-manylinux*.whl; do
                 if [ -f "$whl_file" ]; then
-                  NEW_NAME=$(echo "$whl_file" | sed "s/-cp310-cp310-/-py3-none-/g")
-                  mv "$whl_file" "$NEW_NAME"
-                  echo "Готов: $NEW_NAME"
+                  /opt/python/cp310-cp310/bin/python -m wheel tags \
+                    --python-tag py3 \
+                    --abi-tag none \
+                    --output-dir /workdir/dist/tmp_tagged \
+                    "$whl_file"
+                  rm "$whl_file"
+                  echo "Перепакован: $whl_file"
                 fi
               done
+              mv /workdir/dist/tmp_tagged/*.whl /workdir/dist/
+              rm -rf /workdir/dist/tmp_tagged
 
-              echo "--- Итоговое содержимое dist (должны быть только py3-none) ---"
+              echo "--- итоговое содержимое dist ---"
               ls -l /workdir/dist/
             '
 
-      - name: сохрание пакетов
+      - name: сохранение пакетов
         uses: actions/upload-artifact@v6
         with:
           name: python-package-wheel-manylinux
@@ -117,7 +122,7 @@ jobs:
       - name: проверка репозитория
         uses: actions/checkout@v6
 
-      - name: сборка в контейнере musllinux
+      - name: сборка в контейнере musllinux
         env:
           PACKAGE_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
@@ -126,20 +131,20 @@ jobs:
             -e PACKAGE_VERSION \
             quay.io/pypa/musllinux_1_1_x86_64 /bin/bash -c '
               set -eux
-          
+
               echo "--- установка версии ---"
               sed -i "s/^version = .*/version = \"$PACKAGE_VERSION\"/" /workdir/python/pyproject.toml
-          
+
               echo "--- установка Go ---"
               apk add --no-cache curl build-base
               curl -sL https://go.dev/dl/go1.25.0.linux-amd64.tar.gz | tar -C /usr/local -xzf -
               export PATH=$PATH:/usr/local/go/bin
-          
-              echo "--- установка uv ---"
-              /opt/python/cp310-cp310/bin/pip install uv
-          
+
+              echo "--- установка uv и wheel ---"
+              /opt/python/cp310-cp310/bin/pip install uv wheel
+
               mkdir -p /workdir/dist
-          
+
               echo "--- сборка сырого wheel ---"
               CGO_ENABLED=1 TARGET_ARCH="x86_64" \
               /opt/python/cp310-cp310/bin/uv build \
@@ -153,26 +158,33 @@ jobs:
               ORIG_WHL=$(ls py_fake_useragent-*-cp310-cp310-linux_x86_64.whl 2>/dev/null | head -n 1)
 
               if [ -z "$ORIG_WHL" ]; then
-                 echo "Ошибка: Исходный wheel не найден!"
-                 exit 1
+                echo "Ошибка: Исходный wheel не найден!"
+                exit 1
               fi
 
               echo "--- repair через auditwheel ---"
               auditwheel repair "$ORIG_WHL" --plat musllinux_1_1_x86_64 -w /workdir/dist/
-          
-              echo "--- УДАЛЕНИЕ СЫРОГО ФАЙЛА ---"
+
+              echo "--- удаление сырого файла ---"
               rm "$ORIG_WHL"
 
-              echo "--- переименование в ABI-agnostic (py3-none) ---"
+              echo "--- перепаковка через wheel tags ---"
+              mkdir -p /workdir/dist/tmp_tagged
               for whl_file in py_fake_useragent-*-cp310-cp310-musllinux*.whl; do
                 if [ -f "$whl_file" ]; then
-                  NEW_NAME=$(echo "$whl_file" | sed "s/-cp310-cp310-/-py3-none-/g")
-                  mv "$whl_file" "$NEW_NAME"
-                  echo "Готов: $NEW_NAME"
+                  /opt/python/cp310-cp310/bin/python -m wheel tags \
+                    --python-tag py3 \
+                    --abi-tag none \
+                    --output-dir /workdir/dist/tmp_tagged \
+                    "$whl_file"
+                  rm "$whl_file"
+                  echo "Перепакован: $whl_file"
                 fi
               done
+              mv /workdir/dist/tmp_tagged/*.whl /workdir/dist/
+              rm -rf /workdir/dist/tmp_tagged
 
-              echo "--- Итоговое содержимое dist (должны быть только py3-none) ---"
+              echo "--- итоговое содержимое dist ---"
               ls -l /workdir/dist/
             '
 
@@ -222,10 +234,10 @@ jobs:
         with:
           go-version: '1.26'
 
-      - name: установка uv
-        run: pip install uv
+      - name: установка зависимостей
+        run: pip install uv wheel
 
-      - name: сборка wheel (с конкретным тегом Python)
+      - name: сборка wheel
         env:
           PYTHONUTF8: 1
           PYTHONIOENCODING: 'UTF-8'
@@ -234,44 +246,78 @@ jobs:
         run: |
           mkdir -p ../dist
           ARCH="${{ matrix.platform.arch }}"
-          
+
           echo "--- сборка под $ARCH ---"
-          # uv соберет wheel с версией python текущего раннера (например, cp312)
-          CGO_ENABLED=1 TARGET_ARCH="$ARCH" uv build --wheel --out-dir ../dist --package py-fake-useragent
+          CGO_ENABLED=1 TARGET_ARCH="$ARCH" uv build \
+            --wheel \
+            --out-dir ../dist \
+            --package py-fake-useragent
 
-          echo "--- переименование в ABI-agnostic (py3-none) ---"
-          cd ../dist
-          ls -l
-          
-          # Передаем Python-скрипт через pipe, чтобы избежать проблем с синтаксисом в одну строку
-          cat <<EOF | python
+          echo "--- исходные файлы ---"
+          ls -l ../dist
+
+      - name: перепаковка wheel с корректными тегами
+        shell: python
+        env:
+          PYTHONUTF8: 1
+          PYTHONIOENCODING: 'UTF-8'
+        run: |
           import os
-          import re
           import sys
+          import glob
+          import shutil
+          import subprocess
+          from pathlib import Path
 
-          # Регулярка ищет теги типа -cp312-cp312- или -cp312-abi3- и меняет на -py3-none-
-          pattern = re.compile(r'-(cp\d+|py\d+)-(cp\d+|abi3|none)-')
-          replacement = '-py3-none-'
+          dist_dir = Path("dist")
+          plat = "${{ matrix.platform.plat }}"
+          wheels = list(dist_dir.glob("*.whl"))
 
-          print("Запуск переименования...")
-          for name in os.listdir('.'):
-              if not name.endswith('.whl'):
-                  continue
-          
-              new_name = pattern.sub(replacement, name)
-              if new_name != name:
-                  print(f'Переименовывается: {name} -> {new_name}')
-                  try:
-                      os.rename(name, new_name)
-                  except OSError as e:
-                      print(f"Ошибка при переименовании: {e}")
-                      sys.exit(1)
-              else:
-                  print(f'Пропуск (имя корректное): {name}')
-          EOF
-          
-          echo "--- итоговые файлы ---"
-          ls -l
+          if not wheels:
+              print("Ошибка: wheel-файлы не найдены!")
+              sys.exit(1)
+
+          for whl in wheels:
+              print(f"Обрабатывается: {whl.name}")
+
+              tmp_dir = dist_dir / "tmp_tagged"
+              tmp_dir.mkdir(exist_ok=True)
+
+              result = subprocess.run(
+                  [
+                      sys.executable, "-m", "wheel", "tags",
+                      "--python-tag", "py3",
+                      "--abi-tag", "none",
+                      "--platform-tag", plat,
+                      "--output-dir", str(tmp_dir),
+                      str(whl),
+                  ],
+                  capture_output=True,
+                  text=True,
+              )
+
+              print(result.stdout)
+              if result.returncode != 0:
+                  print(f"Ошибка wheel tags:\n{result.stderr}")
+                  sys.exit(1)
+
+              whl.unlink()
+
+              new_wheels = list(tmp_dir.glob("*.whl"))
+              if not new_wheels:
+                  print("Ошибка: перепакованный wheel не найден!")
+                  sys.exit(1)
+
+              for new_whl in new_wheels:
+                  dest = dist_dir / new_whl.name
+                  shutil.move(str(new_whl), str(dest))
+                  print(f"Готов: {dest.name}")
+
+              shutil.rmtree(tmp_dir)
+
+          print("\n--- итоговые файлы ---")
+          for f in sorted(dist_dir.glob("*.whl")):
+              print(f"  {f.name}  ({f.stat().st_size:,} bytes)")
 
       - name: сохранение пакетов
         uses: actions/upload-artifact@v6
@@ -291,8 +337,10 @@ jobs:
           pattern: python-package-wheel-*
           path: dist
           merge-multiple: true
+
       - name: список сборок
         run: ls -R dist
+
       - name: публикация на PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
