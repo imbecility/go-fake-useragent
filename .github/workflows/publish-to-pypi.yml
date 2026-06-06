@@ -61,7 +61,7 @@ jobs:
               export PATH=$PATH:/usr/local/go/bin
 
               echo "--- установка uv и wheel ---"
-              /opt/python/cp310-cp310/bin/pip install uv "wheel>=0.43.0"
+              /opt/python/cp310-cp310/bin/pip install uv wheel
 
               mkdir -p /workdir/dist
 
@@ -89,20 +89,16 @@ jobs:
               rm "$ORIG_WHL"
 
               echo "--- перепаковка через wheel tags ---"
-              mkdir -p /workdir/dist/tmp_tagged
               for whl_file in py_fake_useragent-*-cp310-cp310-manylinux*.whl; do
                 if [ -f "$whl_file" ]; then
                   /opt/python/cp310-cp310/bin/python -m wheel tags \
                     --python-tag py3 \
                     --abi-tag none \
-                    --output-dir /workdir/dist/tmp_tagged \
+                    --remove \
                     "$whl_file"
-                  rm "$whl_file"
                   echo "Перепакован: $whl_file"
                 fi
               done
-              mv /workdir/dist/tmp_tagged/*.whl /workdir/dist/
-              rm -rf /workdir/dist/tmp_tagged
 
               echo "--- итоговое содержимое dist ---"
               ls -l /workdir/dist/
@@ -141,7 +137,7 @@ jobs:
               export PATH=$PATH:/usr/local/go/bin
 
               echo "--- установка uv и wheel ---"
-              /opt/python/cp310-cp310/bin/pip install uv "wheel>=0.43.0"
+              /opt/python/cp310-cp310/bin/pip install uv wheel
 
               mkdir -p /workdir/dist
 
@@ -169,20 +165,16 @@ jobs:
               rm "$ORIG_WHL"
 
               echo "--- перепаковка через wheel tags ---"
-              mkdir -p /workdir/dist/tmp_tagged
               for whl_file in py_fake_useragent-*-cp310-cp310-musllinux*.whl; do
                 if [ -f "$whl_file" ]; then
                   /opt/python/cp310-cp310/bin/python -m wheel tags \
                     --python-tag py3 \
                     --abi-tag none \
-                    --output-dir /workdir/dist/tmp_tagged \
+                    --remove \
                     "$whl_file"
-                  rm "$whl_file"
                   echo "Перепакован: $whl_file"
                 fi
               done
-              mv /workdir/dist/tmp_tagged/*.whl /workdir/dist/
-              rm -rf /workdir/dist/tmp_tagged
 
               echo "--- итоговое содержимое dist ---"
               ls -l /workdir/dist/
@@ -235,7 +227,7 @@ jobs:
           go-version: '1.26'
 
       - name: установка зависимостей
-        run: pip install uv "wheel>=0.43.0"
+        run: pip install uv wheel
 
       - name: сборка wheel
         env:
@@ -262,10 +254,7 @@ jobs:
           PYTHONUTF8: 1
           PYTHONIOENCODING: 'UTF-8'
         run: |
-          import os
           import sys
-          import glob
-          import shutil
           import subprocess
           from pathlib import Path
 
@@ -280,16 +269,13 @@ jobs:
           for whl in wheels:
               print(f"Обрабатывается: {whl.name}")
 
-              tmp_dir = dist_dir / "tmp_tagged"
-              tmp_dir.mkdir(exist_ok=True)
-
               result = subprocess.run(
                   [
                       sys.executable, "-m", "wheel", "tags",
                       "--python-tag", "py3",
                       "--abi-tag", "none",
                       "--platform-tag", plat,
-                      "--output-dir", str(tmp_dir),
+                      "--remove",
                       str(whl),
                   ],
                   capture_output=True,
@@ -300,20 +286,6 @@ jobs:
               if result.returncode != 0:
                   print(f"Ошибка wheel tags:\n{result.stderr}")
                   sys.exit(1)
-
-              whl.unlink()
-
-              new_wheels = list(tmp_dir.glob("*.whl"))
-              if not new_wheels:
-                  print("Ошибка: перепакованный wheel не найден!")
-                  sys.exit(1)
-
-              for new_whl in new_wheels:
-                  dest = dist_dir / new_whl.name
-                  shutil.move(str(new_whl), str(dest))
-                  print(f"Готов: {dest.name}")
-
-              shutil.rmtree(tmp_dir)
 
           print("\n--- итоговые файлы ---")
           for f in sorted(dist_dir.glob("*.whl")):
