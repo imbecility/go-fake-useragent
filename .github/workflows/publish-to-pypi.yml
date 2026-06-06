@@ -259,7 +259,6 @@ jobs:
           from pathlib import Path
 
           dist_dir = Path("dist")
-          plat = "${{ matrix.platform.plat }}"
           wheels = list(dist_dir.glob("*.whl"))
 
           if not wheels:
@@ -274,7 +273,6 @@ jobs:
                       sys.executable, "-m", "wheel", "tags",
                       "--python-tag", "py3",
                       "--abi-tag", "none",
-                      "--platform-tag", plat,
                       "--remove",
                       str(whl),
                   ],
