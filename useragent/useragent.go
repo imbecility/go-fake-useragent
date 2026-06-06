@@ -256,29 +256,40 @@ func WithDiskCache(path string, ttl time.Duration) Option {
 	}
 }
 
-// fetchGoogleVersions получает последние версии Chrome через официальный API Google.
-func (g *Generator) fetchGoogleVersions(ctx context.Context) (_ []string, err error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, googleAPIURL, nil)
+// executeGet выполняет HTTP GET запрос и безопасно управляет закрытием тела ответа.
+func (g *Generator) executeGet(ctx context.Context, url string, process func(io.Reader) error) (err error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("не удалось создать запрос: %w", err)
+		return fmt.Errorf("не удалось создать запрос: %w", err)
 	}
 
 	resp, err := g.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("HTTP запрос не удался: %w", err)
+		return fmt.Errorf("HTTP запрос не удался: %w", err)
 	}
 	defer func() {
-		// обработка закрытия тела HTTP-ответа, чтобы выявить проблемы ввода-вывода
+		// закрытие с пробросом ошибки
 		err = errors.Join(err, resp.Body.Close())
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("неверный HTTP статус: %s", resp.Status)
+		return fmt.Errorf("неверный HTTP статус: %s", resp.Status)
 	}
 
+	return process(resp.Body)
+}
+
+// fetchGoogleVersions получает последние версии Chrome через официальный API Google.
+func (g *Generator) fetchGoogleVersions(ctx context.Context) ([]string, error) {
 	var apiResponse googleAPIResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
-		return nil, fmt.Errorf("не удалось декодировать JSON-ответ: %w", err)
+	err := g.executeGet(ctx, googleAPIURL, func(body io.Reader) error {
+		if err := json.NewDecoder(body).Decode(&apiResponse); err != nil {
+			return fmt.Errorf("не удалось декодировать JSON-ответ: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	if len(apiResponse.Releases) == 0 {
@@ -295,27 +306,19 @@ func (g *Generator) fetchGoogleVersions(ctx context.Context) (_ []string, err er
 }
 
 // fetchMicrosoftVersions парсит страницу репозитория Microsoft Edge, чтобы найти последние версии браузеров.
-func (g *Generator) fetchMicrosoftVersions(ctx context.Context) (_ []string, err error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, msEdgeRepoURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("не удалось создать запрос: %w", err)
-	}
+func (g *Generator) fetchMicrosoftVersions(ctx context.Context) ([]string, error) {
+	var body []byte
 
-	resp, err := g.httpClient.Do(req)
+	err := g.executeGet(ctx, msEdgeRepoURL, func(r io.Reader) error {
+		var readErr error
+		body, readErr = io.ReadAll(r)
+		if readErr != nil {
+			return fmt.Errorf("не удалось прочитать тело ответа: %w", readErr)
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("HTTP запрос не удался: %w", err)
-	}
-	defer func() {
-		err = errors.Join(err, resp.Body.Close())
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("неверный HTTP статус: %s", resp.Status)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("не удалось прочитать тело ответа: %w", err)
+		return nil, err
 	}
 
 	matches := msEdgeVersionRegex.FindAllStringSubmatch(string(body), -1)
@@ -430,7 +433,6 @@ func (g *Generator) updateVersions() error {
 		g.logger.Debug("попытка получить версии браузеров через Google API…")
 		versions, err := g.fetchGoogleVersions(ctx)
 		if err != nil {
-			// --- ИЗМЕНЕНИЕ ЗДЕСЬ ---
 			if errors.Is(err, context.Canceled) {
 				g.logger.Debug("запрос к источнику был отменен, так как другой источник ответил быстрее", "source", sourceName)
 			} else {
@@ -503,7 +505,7 @@ func (g *Generator) updateVersions() error {
 func (g *Generator) GetVersions() []string {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
-	// создаем копию, чтобы избежать изменений извне
+	// копия, чтобы избежать изменений извне
 	versionsCopy := make([]string, len(g.versions))
 	copy(versionsCopy, g.versions)
 	return versionsCopy

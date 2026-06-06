@@ -85,36 +85,44 @@ if __name__ == '__main__':
 
 ```
 --- инициализация с кэшем и логгером ---
-[DEBUG] time=2025-08-26T14:15:22.168+05:00 level=DEBUG msg="успешно загружены версии User-Agent из кэша на диске"
+[DEBUG] time=2026-06-06T14:15:22.168+05:00 level=DEBUG msg="успешно загружены версии User-Agent из кэша на диске"
 
 --- получение User-Agent ---
-Случайный UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.7258.67 Safari/537.36
+Случайный UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.7778.178 Safari/537.36 Edg/148.0.7778.178
 
 --- получение заголовков ---
 {
   "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-  "accept-language": "en-US,en;q=0.9",
-  "connection": "keep-alive",
-  "origin": "https://example.com",
+  "accept-language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+  "cache-control": "no-cache",
+  "device-memory": "32",
+  "downlink": "8.0",
+  "dpr": "1.0",
+  "ect": "4g",
+  "origin": "https://yandex.ru",
+  "pragma": "no-cache",
   "priority": "u=0, i",
-  "referer": "https://example.com",
-  "sec-ch-ua": "\"Not;A_Brand\";v=\"99\", \"Chromium\";v=\"139\", \"Google Chrome\";v=\"139\"",
+  "referer": "https://yandex.ru",
+  "rtt": "200",
+  "sec-ch-ua": "\"Microsoft Edge\";v=\"148\", \"Not,A-Brand\";v=\"99\", \"Chromium\";v=\"148\"",
   "sec-ch-ua-arch": "\"x86\"",
   "sec-ch-ua-bitness": "\"64\"",
-  "sec-ch-ua-form-factors": "\"Desktop\"",
-  "sec-ch-ua-full-version": "\"139.0.7258.138\"",
+  "sec-ch-ua-full-version": "\"148.0.7778.178\"",
+  "sec-ch-ua-full-version-list": "\"Microsoft Edge\";v=\"148.0.7778.178\", \"Not,A-Brand\";v=\"99.0.0.0\", \"Chromium\";v=\"148.0.7778.178\"",
   "sec-ch-ua-mobile": "?0",
   "sec-ch-ua-model": "\"\"",
   "sec-ch-ua-platform": "\"Windows\"",
   "sec-ch-ua-platform-version": "\"19.0.0\"",
-  "sec-ch-viewport-height": "\"676\"",
-  "sec-ch-viewport-width": "\"1472\"",
+  "sec-ch-ua-wow64": "?0",
+  "sec-ch-viewport-height": "532",
+  "sec-ch-viewport-width": "1278",
   "sec-fetch-dest": "document",
   "sec-fetch-mode": "navigate",
   "sec-fetch-site": "same-origin",
   "sec-fetch-user": "?1",
   "upgrade-insecure-requests": "1",
-  "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.7258.138 Safari/537.36"
+  "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.7778.178 Safari/537.36 Edg/148.0.7778.178",
+  "viewport-width": "1278"
 }
 
 --- получение заголовков краулера ---
@@ -132,30 +140,38 @@ Google Bot:
 --- инициализация без кэша (будет использована аппроксимация, если нет сети)
 и с контекстным менеджером `with` для автоматического управления ресурсами ---
 
-UA без кэша: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.7204.169 Safari/537.36
+UA без кэша: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.7778.168 Safari/537.36
 заголовки без кэша: {
   "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-  "accept-language": "en-US,en;q=0.9",
-  "connection": "keep-alive",
-  "origin": "https://site.ru",
+  "accept-language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+  "cache-control": "no-cache",
+  "device-memory": "8",
+  "downlink": "10.0",
+  "dpr": "1.5",
+  "ect": "4g",
+  "origin": "https://yandex.ru",
+  "pragma": "no-cache",
   "priority": "u=0, i",
-  "referer": "https://site.ru",
-  "sec-ch-ua": "\"Not-A/Brand\";v=\"8\", \"Chromium\";v=\"138\", \"Google Chrome\";v=\"138\"",
+  "referer": "https://yandex.ru",
+  "rtt": "200",
+  "sec-ch-ua": "\"Google Chrome\";v=\"148\", \"Not?A)Brand\";v=\"24\", \"Chromium\";v=\"148\"",
   "sec-ch-ua-arch": "\"x86\"",
   "sec-ch-ua-bitness": "\"64\"",
-  "sec-ch-ua-form-factors": "\"Desktop\"",
-  "sec-ch-ua-full-version": "\"138.0.7204.170\"",
+  "sec-ch-ua-full-version": "\"148.0.7778.168\"",
+  "sec-ch-ua-full-version-list": "\"Google Chrome\";v=\"148.0.7778.168\", \"Not?A)Brand\";v=\"24.0.0.0\", \"Chromium\";v=\"148.0.7778.168\"",
   "sec-ch-ua-mobile": "?0",
   "sec-ch-ua-model": "\"\"",
   "sec-ch-ua-platform": "\"Windows\"",
   "sec-ch-ua-platform-version": "\"19.0.0\"",
-  "sec-ch-viewport-height": "\"712\"",
-  "sec-ch-viewport-width": "\"1312\"",
+  "sec-ch-ua-wow64": "?0",
+  "sec-ch-viewport-height": "592",
+  "sec-ch-viewport-width": "1216",
   "sec-fetch-dest": "document",
   "sec-fetch-mode": "navigate",
   "sec-fetch-site": "same-origin",
   "sec-fetch-user": "?1",
   "upgrade-insecure-requests": "1",
-  "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.7204.170 Safari/537.36"
+  "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.7778.168 Safari/537.36",
+  "viewport-width": "1216"
 }
 ```

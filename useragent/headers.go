@@ -15,6 +15,10 @@ var (
 	uaMajorVersionRegex = regexp.MustCompile(`Chrome/(\d+)`)
 	uaFullVersionRegex  = regexp.MustCompile(`Chrome/(\d+\.\d+\.\d+\.\d+)`)
 	uaPlatformRegex     = regexp.MustCompile(`\(([^;]+)`)
+	deviceMemories      = []string{"4", "8", "16", "32"}
+	dprs                = []string{"1.0", "1.25", "1.5", "2.0"}
+	rtts                = []string{"50", "100", "150", "200"}
+	downlinks           = []string{"1.5", "2.0", "5.8", "8.0", "9.9", "10.0"}
 )
 
 // greaseChars содержит разрешенные символы в GREASE-бренде.
@@ -91,7 +95,7 @@ func parseUserAgent(ua string) browserInfo {
 	if match := uaFullVersionRegex.FindStringSubmatch(ua); len(match) > 1 {
 		info.FullVersion = match[1]
 	} else {
-		info.FullVersion = info.MajorVersion // Фоллбэк на мажорную версию
+		info.FullVersion = info.MajorVersion // фоллбэк на мажорную версию
 	}
 
 	// 2. извлечение платформы
@@ -129,7 +133,7 @@ func (g *Generator) GetHeaders(targetURL ...string) map[string]string {
 
 	var referer, origin string
 	var hasURL bool
-
+	var secFetchSite = "none"
 	var u *url.URL
 	var err error
 	if len(targetURL) > 0 && targetURL[0] != "" {
@@ -139,19 +143,40 @@ func (g *Generator) GetHeaders(targetURL ...string) map[string]string {
 
 	if !hasURL {
 		u, _ = url.Parse("https://www.google.com/search?q=")
+		secFetchSite = "cross-site"
 	}
 
 	referer = fmt.Sprintf("%s://%s", u.Scheme, u.Host)
 	if hasURL {
 		origin = referer
+		secFetchSite = "same-origin"
 	}
 
 	// динамическая генерация sec-ch-ua
 	greaseBrand, greaseVersion := generateGreaseBrand()
-	secChUa := fmt.Sprintf(
-		`"%s";v="%s", "Chromium";v="%s", "%s";v="%s"`,
-		greaseBrand, greaseVersion, info.MajorVersion, info.SecBrandName, info.MajorVersion,
+
+	// генерация полных версий для sec-ch-ua-full-version-list
+	greaseFullVersion := fmt.Sprintf("%s.0.0.0", greaseVersion)
+
+	secChUaFullList := fmt.Sprintf(
+		`"%s";v="%s", "%s";v="%s", "%s";v="%s"`,
+		info.SecBrandName, info.FullVersion,
+		greaseBrand, greaseFullVersion,
+		"Chromium", info.FullVersion,
 	)
+
+	secChUa := fmt.Sprintf(
+		`"%s";v="%s", "%s";v="%s", "%s";v="%s"`,
+		info.SecBrandName, info.MajorVersion,
+		greaseBrand, greaseVersion,
+		"Chromium", info.MajorVersion,
+	)
+
+	// рандомизация железа и сети
+	deviceMemory := deviceMemories[rand.IntN(len(deviceMemories))]
+	dpr := dprs[rand.IntN(len(dprs))]
+	rtt := rtts[rand.IntN(len(rtts))]
+	downlink := downlinks[rand.IntN(len(downlinks))]
 
 	// случайное разрешение экрана
 	resolution := commonResolutions[rand.IntN(len(commonResolutions))]
@@ -165,28 +190,36 @@ func (g *Generator) GetHeaders(targetURL ...string) map[string]string {
 	viewportWidth := strconv.Itoa(resolution.Width - widthSubtraction)
 
 	headers := map[string]string{
-		"user-agent":                 ua,
-		"accept":                     "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-		"accept-language":            "en-US,en;q=0.9",
-		"referer":                    referer,
-		"connection":                 "keep-alive",
-		"sec-ch-ua":                  secChUa,
-		"sec-ch-ua-full-version":     fmt.Sprintf(`"%s"`, info.FullVersion),
-		"sec-ch-ua-mobile":           "?0",
-		"sec-ch-ua-platform":         fmt.Sprintf(`"%s"`, info.Platform),
-		"sec-ch-ua-arch":             `"x86"`,
-		"sec-ch-ua-bitness":          `"64"`,
-		"sec-ch-ua-form-factors":     `"Desktop"`,
-		"sec-ch-ua-platform-version": `"19.0.0"`, // windows 11 24H2 26100.4946 +
-		"sec-ch-ua-model":            `""`,
-		"sec-ch-viewport-height":     fmt.Sprintf(`"%s"`, viewportHeight),
-		"sec-ch-viewport-width":      fmt.Sprintf(`"%s"`, viewportWidth),
-		"sec-fetch-dest":             "document",
-		"sec-fetch-mode":             "navigate",
-		"sec-fetch-site":             "same-origin",
-		"sec-fetch-user":             "?1",
-		"upgrade-insecure-requests":  "1",
-		"priority":                   "u=0, i",
+		"user-agent":                  ua,
+		"accept":                      "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+		"accept-language":             "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+		"device-memory":               deviceMemory,
+		"downlink":                    downlink,
+		"dpr":                         dpr,
+		"ect":                         "4g",
+		"rtt":                         rtt,
+		"referer":                     referer,
+		"cache-control":               "no-cache",
+		"pragma":                      "no-cache",
+		"sec-ch-ua":                   secChUa,
+		"sec-ch-ua-arch":              `"x86"`,
+		"sec-ch-ua-bitness":           `"64"`,
+		"sec-ch-ua-full-version":      fmt.Sprintf(`"%s"`, info.FullVersion),
+		"sec-ch-ua-full-version-list": secChUaFullList,
+		"sec-ch-ua-mobile":            "?0",
+		"sec-ch-ua-model":             `""`,
+		"sec-ch-ua-platform":          fmt.Sprintf(`"%s"`, info.Platform),
+		"sec-ch-ua-platform-version":  `"19.0.0"`,
+		"sec-ch-ua-wow64":             "?0",
+		"sec-ch-viewport-height":      viewportHeight,
+		"sec-ch-viewport-width":       viewportWidth,
+		"viewport-width":              viewportWidth,
+		"sec-fetch-dest":              "document",
+		"sec-fetch-mode":              "navigate",
+		"sec-fetch-site":              secFetchSite, // если нет реферера - "none", если есть - "cross-site" или "same-origin"
+		"sec-fetch-user":              "?1",
+		"upgrade-insecure-requests":   "1",
+		"priority":                    "u=0, i",
 	}
 
 	if origin != "" {

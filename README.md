@@ -124,12 +124,37 @@ for key, value := range headers {
 }
 
 /* Примерный вывод:
-   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.7204.168 Safari/537.36 Edg/138.0.7204.168
-   accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*//*;q=0.8,application/signed-exchange;v=b3;q=0.7
-   origin: https://api.example.com
-   referer: https://api.example.com
-   sec-ch-ua: "Not A Brand";v="99", "Chromium";v="138", "Microsoft Edge";v="138"
-   ... и другие
+    downlink: 8.0
+    sec-ch-ua-arch: "x86"
+    sec-ch-ua-mobile: ?0
+    sec-ch-ua-wow64: ?0
+    sec-fetch-site: same-origin
+    dpr: 1.0
+    rtt: 200
+    sec-ch-ua: "Microsoft Edge";v="148", "Not,A-Brand";v="99", "Chromium";v="148"
+    sec-ch-ua-full-version: "148.0.7778.178"
+    sec-ch-ua-platform: "Windows"
+    sec-ch-viewport-width: 1278
+    sec-ch-viewport-height: 532
+    accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*\/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+    ect: 4g
+    pragma: no-cache
+    sec-ch-ua-bitness: "64"
+    device-memory: 32
+    sec-ch-ua-model: ""
+    sec-fetch-user: ?1
+    upgrade-insecure-requests: 1
+    sec-fetch-dest: document
+    user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.7778.178 Safari/537.36 Edg/148.0.7778.178
+    sec-fetch-mode: navigate
+    cache-control: no-cache
+    origin: https://yandex.ru
+    priority: u=0, i
+    sec-ch-ua-platform-version: "19.0.0"
+    accept-language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7
+    referer: https://yandex.ru
+    sec-ch-ua-full-version-list: "Microsoft Edge";v="148.0.7778.178", "Not,A-Brand";v="99.0.0.0", "Chromium";v="148.0.7778.178"
+    viewport-width: 1278
 */
 ```
 

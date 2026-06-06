@@ -1,4 +1,3 @@
-# ./.github/workflows/publish-to-pypi.yml
 name: Build and publish Python distributions to PyPI
 
 on:
@@ -9,41 +8,37 @@ on:
 
 jobs:
   prepare:
-    name: получение версии релиза
+    name: Получение версии релиза
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.get_version.outputs.version }}
     steps:
-      - name: проверка репозитория
-        uses: actions/checkout@v5
+      - name: Проверка репозитория
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: определение строки с версией
+      - name: Определение версии
         id: get_version
         shell: bash
         run: |
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
             VERSION="${{ github.ref_name }}"
-            echo "активируется при отправке тега, используется версия из тега: $VERSION"
           else
-            echo "запущено вручную, поиск последнего тега в git..."
             VERSION=$(git describe --tags --abbrev=0)
-            echo "найден последний тег: $VERSION"
           fi
           CLEAN_VERSION=${VERSION#v}
-          echo "очищенная версия: $CLEAN_VERSION"
+          echo "Очищенная версия: $CLEAN_VERSION"
           echo "version=$CLEAN_VERSION" >> "$GITHUB_OUTPUT"
 
   build-wheels-manylinux:
-    name: сборка под manylinux
+    name: Сборка под manylinux
     needs: prepare
     runs-on: ubuntu-latest
     steps:
-      - name: проверка репозитория
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
-      - name: сборка в контейнере manylinux
+      - name: Сборка в контейнере manylinux
         env:
           PACKAGE_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
@@ -52,73 +47,54 @@ jobs:
             -e PACKAGE_VERSION \
             quay.io/pypa/manylinux2014_x86_64 /bin/bash -c '
               set -eux
-              
-              echo "--- установка версии ---"
+          
               sed -i "s/^version = .*/version = \"$PACKAGE_VERSION\"/" /workdir/python/pyproject.toml
-              
-              echo "--- установка Go ---"
+          
               yum install -y curl
-              curl -sL https://go.dev/dl/go1.25.0.linux-amd64.tar.gz | tar -C /usr/local -xzf -
+              curl -sL https://go.dev/dl/go1.26.4.linux-amd64.tar.gz | tar -C /usr/local -xzf -
               export PATH=$PATH:/usr/local/go/bin
-              
-              echo "--- установка uv ---"
-              /opt/python/cp310-cp310/bin/pip install uv
-              
+          
+              # Устанавливаем uv и wheel для смены тегов
+              /opt/python/cp310-cp310/bin/pip install uv wheel
+          
               mkdir -p /workdir/dist
-              
-              echo "--- сборка сырого wheel ---"
+          
               CGO_ENABLED=1 TARGET_ARCH="x86_64" \
-              /opt/python/cp310-cp310/bin/uv build \
-                --wheel \
+              /opt/python/cp310-cp310/bin/uv build --wheel \
                 --python "/opt/python/cp310-cp310/bin/python" \
                 --out-dir /workdir/dist \
                 --package py-fake-useragent \
                 /workdir/python
 
               cd /workdir/dist
-              # Находим исходный wheel
-              ORIG_WHL=$(ls py_fake_useragent-*-cp310-cp310-linux_x86_64.whl 2>/dev/null | head -n 1)
-              
-              if [ -z "$ORIG_WHL" ]; then
-                 echo "Ошибка: Исходный wheel не найден!"
-                 exit 1
-              fi
+              ORIG_WHL=$(ls py_fake_useragent-*-linux_x86_64.whl | head -n 1)
 
-              echo "--- repair через auditwheel ---"
+              # Вшиваем системные зависимости через auditwheel
               auditwheel repair "$ORIG_WHL" --plat manylinux2014_x86_64 -w /workdir/dist/
-              
-              echo "--- УДАЛЕНИЕ СЫРОГО ФАЙЛА ---"
               rm "$ORIG_WHL"
 
-              echo "--- переименование в ABI-agnostic (py3-none) ---"
-              # Ищем только manylinux файлы
-              for whl_file in py_fake_useragent-*-cp310-cp310-manylinux*.whl; do
-                if [ -f "$whl_file" ]; then
-                  NEW_NAME=$(echo "$whl_file" | sed "s/-cp310-cp310-/-py3-none-/g")
-                  mv "$whl_file" "$NEW_NAME"
-                  echo "Готов: $NEW_NAME"
-                fi
+              # Безопасная смена тегов на ABI-agnostic (py3-none) с обновлением метаданных
+              for whl_file in py_fake_useragent-*-manylinux*.whl; do
+                /opt/python/cp310-cp310/bin/wheel tags --python-tag py3 --abi-tag none "$whl_file"
+                rm "$whl_file"
               done
-
-              echo "--- Итоговое содержимое dist (должны быть только py3-none) ---"
+          
               ls -l /workdir/dist/
             '
-      
-      - name: сохрание пакетов
-        uses: actions/upload-artifact@v4
+
+      - uses: actions/upload-artifact@v6
         with:
           name: python-package-wheel-manylinux
           path: dist/*.whl
 
   build-wheels-musllinux:
-    name: сборка под musllinux
+    name: Сборка под musllinux
     needs: prepare
     runs-on: ubuntu-latest
     steps:
-      - name: проверка репозитория
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
-      - name: сборка в контейнере musllinux
+      - name: Сборка в контейнере musllinux
         env:
           PACKAGE_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
@@ -127,174 +103,113 @@ jobs:
             -e PACKAGE_VERSION \
             quay.io/pypa/musllinux_1_1_x86_64 /bin/bash -c '
               set -eux
-              
-              echo "--- установка версии ---"
+          
               sed -i "s/^version = .*/version = \"$PACKAGE_VERSION\"/" /workdir/python/pyproject.toml
-              
-              echo "--- установка Go ---"
+          
               apk add --no-cache curl build-base
               curl -sL https://go.dev/dl/go1.25.0.linux-amd64.tar.gz | tar -C /usr/local -xzf -
               export PATH=$PATH:/usr/local/go/bin
-              
-              echo "--- установка uv ---"
-              /opt/python/cp310-cp310/bin/pip install uv
-              
+          
+              /opt/python/cp310-cp310/bin/pip install uv wheel
+          
               mkdir -p /workdir/dist
-              
-              echo "--- сборка сырого wheel ---"
+          
               CGO_ENABLED=1 TARGET_ARCH="x86_64" \
-              /opt/python/cp310-cp310/bin/uv build \
-                --wheel \
+              /opt/python/cp310-cp310/bin/uv build --wheel \
                 --python "/opt/python/cp310-cp310/bin/python" \
                 --out-dir /workdir/dist \
                 --package py-fake-useragent \
                 /workdir/python
 
               cd /workdir/dist
-              ORIG_WHL=$(ls py_fake_useragent-*-cp310-cp310-linux_x86_64.whl 2>/dev/null | head -n 1)
+              ORIG_WHL=$(ls py_fake_useragent-*-linux_x86_64.whl | head -n 1)
 
-              if [ -z "$ORIG_WHL" ]; then
-                 echo "Ошибка: Исходный wheel не найден!"
-                 exit 1
-              fi
-
-              echo "--- repair через auditwheel ---"
               auditwheel repair "$ORIG_WHL" --plat musllinux_1_1_x86_64 -w /workdir/dist/
-              
-              echo "--- УДАЛЕНИЕ СЫРОГО ФАЙЛА ---"
               rm "$ORIG_WHL"
 
-              echo "--- переименование в ABI-agnostic (py3-none) ---"
-              for whl_file in py_fake_useragent-*-cp310-cp310-musllinux*.whl; do
-                if [ -f "$whl_file" ]; then
-                  NEW_NAME=$(echo "$whl_file" | sed "s/-cp310-cp310-/-py3-none-/g")
-                  mv "$whl_file" "$NEW_NAME"
-                  echo "Готов: $NEW_NAME"
-                fi
+              # Безопасная смена тегов
+              for whl_file in py_fake_useragent-*-musllinux*.whl; do
+                /opt/python/cp310-cp310/bin/wheel tags --python-tag py3 --abi-tag none "$whl_file"
+                rm "$whl_file"
               done
-
-              echo "--- Итоговое содержимое dist (должны быть только py3-none) ---"
-              ls -l /workdir/dist/
             '
-      
-      - name: сохранение пакетов
-        uses: actions/upload-artifact@v4
+
+      - uses: actions/upload-artifact@v6
         with:
           name: python-package-wheel-musllinux
           path: dist/*.whl
 
   build-wheels-other:
-    name: сборка под ${{ matrix.platform.plat }}
+    name: Сборка под ${{ matrix.platform.plat }}
     needs: prepare
     runs-on: ${{ matrix.platform.os }}
     strategy:
       fail-fast: false
       matrix:
         platform:
-          - os: windows-latest
-            plat: win_amd64
-            arch: amd64
-          - os: macos-14
-            plat: macosx_x86_64
-            arch: x86_64
-          - os: macos-14
-            plat: macosx_arm64
-            arch: arm64
+          - { os: windows-latest, plat: win_amd64, arch: amd64 }
+          - { os: macos-14, plat: macosx_x86_64, arch: x86_64 }
+          - { os: macos-14, plat: macosx_arm64, arch: arm64 }
     steps:
-      - name: проверка репозитория
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
-      - name: установка версии в pyproject.toml
+      - name: Установка версии в pyproject.toml
         shell: python
-        env:
-          PYTHONUTF8: 1
-          PYTHONIOENCODING: 'UTF-8'
         run: |
           import re
           from pathlib import Path
-          version = "${{ needs.prepare.outputs.version }}"
-          pyproject_path = Path("python/pyproject.toml")
-          content = pyproject_path.read_text(encoding="utf-8")
-          new_content = re.sub(r'^version\s*=\s*".*"', f'version = "{version}"', content, count=1, flags=re.MULTILINE)
-          pyproject_path.write_text(new_content, encoding="utf-8")
+          path = Path("python/pyproject.toml")
+          path.write_text(re.sub(r'^version\s*=\s*".*"', 'version = "${{ needs.prepare.outputs.version }}"', path.read_text(encoding="utf-8"), count=1, flags=re.MULTILINE), encoding="utf-8")
 
-      - name: установка Go
-        uses: actions/setup-go@v5
+      - name: Установка Go
+        uses: actions/setup-go@v6
         with:
-          go-version: '1.25'
-          
-      - name: установка uv
-        run: pip install uv
-        
-      - name: сборка wheel (с конкретным тегом Python)
-        env:
-          PYTHONUTF8: 1
-          PYTHONIOENCODING: 'UTF-8'
+          go-version: '1.26'
+
+      - name: Установка uv и wheel
+        run: pip install uv wheel
+
+      - name: Сборка wheel и ретегинг
         working-directory: ./python
         shell: bash
         run: |
           mkdir -p ../dist
-          ARCH="${{ matrix.platform.arch }}"
           
-          echo "--- сборка под $ARCH ---"
           # uv соберет wheel с версией python текущего раннера (например, cp312)
-          CGO_ENABLED=1 TARGET_ARCH="$ARCH" uv build --wheel --out-dir ../dist --package py-fake-useragent
+          CGO_ENABLED=1 TARGET_ARCH="${{ matrix.platform.arch }}" \
+          uv build --wheel --out-dir ../dist --package py-fake-useragent
 
-          echo "--- переименование в ABI-agnostic (py3-none) ---"
           cd ../dist
-          ls -l
           
-          # Передаем Python-скрипт через pipe, чтобы избежать проблем с синтаксисом в одну строку
-          cat <<EOF | python
-          import os
-          import re
-          import sys
-
-          # Регулярка ищет теги типа -cp312-cp312- или -cp312-abi3- и меняет на -py3-none-
-          pattern = re.compile(r'-(cp\d+|py\d+)-(cp\d+|abi3|none)-')
-          replacement = '-py3-none-'
-
-          print("Запуск переименования...")
-          for name in os.listdir('.'):
-              if not name.endswith('.whl'):
-                  continue
-              
-              new_name = pattern.sub(replacement, name)
-              if new_name != name:
-                  print(f'Переименовывается: {name} -> {new_name}')
-                  try:
-                      os.rename(name, new_name)
-                  except OSError as e:
-                      print(f"Ошибка при переименовании: {e}")
-                      sys.exit(1)
-              else:
-                  print(f'Пропуск (имя корректное): {name}')
-          EOF
+          # Безопасно меняем теги и удаляем исходные файлы (вместо огромного Python-скрипта)
+          for whl_file in *.whl; do
+            wheel tags --python-tag py3 --abi-tag none "$whl_file"
+            rm "$whl_file"
+          done
           
-          echo "--- итоговые файлы ---"
           ls -l
 
-      - name: сохранение пакетов
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: python-package-wheel-${{ matrix.platform.plat }}
           path: dist/*.whl
 
   publish-to-pypi:
-    name: выгрузка и опубликование пакетов на PyPI
+    name: Выгрузка на PyPI
     needs: [prepare, build-wheels-manylinux, build-wheels-musllinux, build-wheels-other]
     runs-on: ubuntu-latest
     if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags')) || github.event_name == 'workflow_dispatch'
     steps:
-      - name: скачивание всех сборок пакетов
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v6
         with:
           pattern: python-package-wheel-*
           path: dist
           merge-multiple: true
-      - name: список сборок
+
+      - name: Проверка собранных пакетов
         run: ls -R dist
-      - name: публикация на PyPI
+
+      - name: Публикация на PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           user: __token__
