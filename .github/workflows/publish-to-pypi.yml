@@ -61,7 +61,7 @@ jobs:
               export PATH=$PATH:/usr/local/go/bin
 
               echo "--- установка uv и wheel ---"
-              /opt/python/cp310-cp310/bin/pip install uv wheel
+              /opt/python/cp310-cp310/bin/pip install uv "wheel>=0.43.0"
 
               mkdir -p /workdir/dist
 
@@ -141,7 +141,7 @@ jobs:
               export PATH=$PATH:/usr/local/go/bin
 
               echo "--- установка uv и wheel ---"
-              /opt/python/cp310-cp310/bin/pip install uv wheel
+              /opt/python/cp310-cp310/bin/pip install uv "wheel>=0.43.0"
 
               mkdir -p /workdir/dist
 
@@ -235,7 +235,7 @@ jobs:
           go-version: '1.26'
 
       - name: установка зависимостей
-        run: pip install uv wheel
+        run: pip install uv "wheel>=0.43.0"
 
       - name: сборка wheel
         env:
